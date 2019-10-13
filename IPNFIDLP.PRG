@@ -1,0 +1,156 @@
+   STORE " " TO WDESNOM
+   SELECT IPNOMINA
+   SEEK WNOMINA
+   IF FOUND()
+      STORE DESNOM           TO WDESNOM
+   ENDIF
+
+   *** RECOPILA Y FILTRA INFORMACION DE LA PERSONA EN HISTORICO
+   SELECT IPNHISTO
+   COPY STRU TO IPNSHIT
+   SELECT 7
+   USE IPNSHIT
+   INDEX ON CEDULA+SUBSTR(DTOC(FECHA),7,4)+SUBSTR(DTOC(FECHA),4,2)+SUBSTR(DTOC(FECHA),1,2) TO IPNSHIT
+   APPEND FROM IPNHISTO FOR  (CEDULA=WCEDULA) .AND.;
+                             (FECHA>=WFECINI) .AND.;
+                             (FECHA<=WFECFIN) .AND.;
+                             (NOMINA<>"UTLDA").AND.;
+                             (NOMINA<>"LIQUI")
+   IF EOF()
+      STORE "NO HAY HISTORICOS DE PAGO PARA ESTA PERSONA" TO MES
+      DO AVISO WITH MES
+      RETURN
+   ENDIF
+
+   *** VALORES INICIALES DEL REPORTE
+   STORE 0                    TO WTOTFIDE
+   STORE 100                  TO WLINE
+   SET DEVI                   TO PRINT
+   STORE WFECINI              TO WFECPROC
+   STORE 0                    TO WMESNO
+   STORE 0                    TO WANT
+   DO WHILE WFECPROC <= WFECFIN
+
+      *** VALORES INICIALES DEL MES A CALCULAR
+      STORE WMESNO + 1        TO WMESNO
+      STORE MONTH(WFECPROC)   TO WMESPROC
+      STORE YEAR(WFECPROC)    TO WYEARPROC
+
+      *** BUSCA ULTIMO PAGO DEL MES EN HISTORICO
+      SELECT IPNSHIT
+      GO TOP
+      STORE 0                  TO WTOTBON
+      STORE 0                  TO WBASICO
+      STORE CTOD("  -  -    ") TO WFECPAG
+      IF (WFECPROC-WINGRESO)/30 >= 3
+         STORE WANT+5 TO WANT
+         DO WHILE .NOT. EOF() 
+            IF MONTH(FECHA)=WMESPROC .AND.;
+               BSTOTBON>0            .AND.;
+               (HRORD+HRDESNOR+HRFERIADO)>0
+               STORE (BSTOTBON)/((HRORD+HRDESNOR+HRFERIADO)/8)     TO WTOTBON
+               STORE FECHA        TO WFECPAG
+               STORE BASICO       TO WBASICO
+            ENDIF
+            SKIP
+         ENDDO
+      ENDIF
+
+      *** LOCALIZA LOS INTERESES DEL MES
+      SELECT IPNFIDE
+      GO TOP
+      LOCATE FOR ANO = WYEARPROC .AND. MEZ = WMESPROC
+      IF .NOT. FOUND()
+         SET DEVI TO SCRE
+         STORE "TABLA DE INTERESES NO CONTIENE A¥O:"+STR(WYEARPROC,4)+" MES:"+STR(WMESPROC,2) TO MES
+         DO AVISO WITH MES
+         RETURN
+      ELSE
+         STORE INTERES TO WINTERESES
+         STORE WINTERESES/12 TO WINTMES
+      ENDIF
+      
+      *** LOCALIZA LOS ANTICIPOS DEL MES
+      STORE 0 TO WANTDELMES
+      SELECT 10
+      GO TOP
+      DO WHILE .NOT. EOF()
+         IF CEDULA = WCEDULA
+            IF (YEAR(FECHA)=YEAR(WFECPROC)) .AND. (MONTH(FECHA)=MONTH(WFECPROC))
+               STORE WANTDELMES + MONTO TO WANTDELMES
+            ENDIF
+         ENDIF
+         SKIP
+      ENDDO
+      
+      *** CALCULA FIDEICOMISO DEL MES (VERIFICAR QUE NO A LOS PRIMEROS 3 MESES)
+      *** INCREMENTO DE DIAS DE ANTIGUEDAD POR MES
+
+      *** FIDE ACUMULADO ARRASTRADO
+      STORE WTOTFIDE*WINTMES/100                          TO WFIDEACU
+      *** FIDE ACUMULADO DEL MES
+      STORE WANT*WTOTBON                                  TO WTOTPRES
+      STORE WTOTPRES-WANTDELMES                           TO WTOTPRES
+      STORE INT((WFECPROC-WINGRESO)/365)                  TO WANOSSER
+      STORE (((7+(WANOSSER-1))/360)*(WTOTBON/30))*WANT    TO WALIBONVAC
+      STORE ((5/30)*WBASICO)*WANT                         TO WALIUTILID
+      STORE ((WTOTPRES+WALIBONVAC+WALIUTILID)*WINTMES)/100 TO WTOTMES
+
+      *** TOTAL FIDEICOMISO
+      STORE WTOTFIDE+WFIDEACU+WTOTMES                     TO WTOTFIDE
+      
+      *** IMPRIME DETALLE MENSUAL
+      IF WFLAGACT
+         STORE WLINE+1 TO WLINE
+         IF WLINE>55
+            DO FIDSALTO
+         ENDIF
+         @ WLINE,1  SAY SUBSTR(DTOC(WFECPROC),4,7)
+         @ WLINE,14 SAY WANT        PICTURE "###"
+         @ WLINE,23 SAY WTOTBON     PICTURE "######.##"
+         @ WLINE,34 SAY WTOTPRES    PICTURE "#########.##"
+         @ WLINE,48 SAY WINTERESES  PICTURE "##.##"
+         @ WLINE,59 SAY WINTMES     PICTURE "##.##"
+         @ WLINE,70 SAY WTOTMES     PICTURE "#########.##"
+         @ WLINE,83 SAY WFIDEACU    PICTURE "#########.##"
+         @ WLINE,96 SAY WTOTFIDE    PICTURE "#########.##"
+         @ WLINE,116 SAY WANTDELMES PICTURE "#########.##"
+
+      ENDIF
+
+      *** CALCULA NUEVA FECHA A PROCESAR
+
+      IF WMESNO < 12
+         STORE WMESPROC+1     TO WMESPROC
+         IF WMESPROC>12
+            STORE 1           TO WMESPROC
+            STORE WYEARPROC+1 TO WYEARPROC
+         ENDIF
+         STORE CTOD( STR(DAY(WFECPROC) ,2)+"-"+;
+                     STR(WMESPROC      ,2)+"-"+;
+                     STR(WYEARPROC     ,4) ) TO WFECPROC
+      ELSE
+         EXIT
+      ENDIF
+   ENDDO
+   @ 10,00 SAY CHR(18)
+   SELECT 1
+   SET DEVI TO SCRE
+   RETURN
+*************
+PROC FIDSALTO
+*************
+@ 00,00 SAY CHR(14)+QQWW
+@ 01,60 SAY "FECHA:"+DTOC(WFECACT)
+@ 02,00 SAY "CALCULO DE FIDEICOMISO L.O.T."
+@ 04,00 SAY "CEDULA :"+WCEDULA
+@ 04,25 SAY "APELLIDOS Y NOMBRES: "+RTRIM(WAPELLIDO)+" "+WNOMBRE
+@ 06,00 SAY "INGRESO: "+DTOC(WINGRESO)
+@ 06,25 SAY "NOMINA : "+WNOMINA+" "+WDESNOM
+@ 08,00 say  "DESDE:"+DTOC(WFECINI)+"  "+" HASTA EL:"+DTOC(WFECFIN)
+@ 10,00 SAY CHR(15)
+@ 10,00 SAY "+----------+--------+-----------+-------------+----------+----------+-------------+-------------+-------------+-------------+"
+@ 11,00 SAY "|   MES/A¥O|DIAS ANT|    SALARIO|ANT DEL MES  | %INT.A¥O | %INT.MES |  FID.DEL MES|FID.MES ANTER|FID.ACUMULADO|ANTIC.PRESTAC|"
+@ 12,00 SAY "+----------+--------+-----------+-------------+----------+----------+-------------+-------------+-------------+-------------+"
+STORE 13 TO WLINE
+RETURN

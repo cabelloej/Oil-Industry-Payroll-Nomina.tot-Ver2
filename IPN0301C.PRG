@@ -1,0 +1,218 @@
+*** VACACIONES LDT
+   store "Procesando informacion, Favor esperar..." to mes
+   do mensaje with mes
+
+   STORE (WFINDATE - INIDATE)/30 TO WMESES
+   STORE WMESES - INT(WMESES) TO WFRACCION
+   IF WFRACCION >= 0.5
+      STORE INT(WMESES)+0.5  TO WMESES
+   ELSE
+      STORE INT(WMESES)      TO WMESES
+   ENDIF
+   STORE 21 TO WLAPSO
+
+   SELECT 4
+   USE IPNLDT
+   LOCATE FOR MESES > WMESES
+   IF .NOT. FOUND()
+      STORE "ERROR, NO SE ENCONTRO REGISTRO DE MESES A PAGAR :"+STR(WMESES,6,2) TO MES
+      DO AVISO WITH MES
+      CLOSE DATA
+      CLOSE INDEX
+      RETURN TO MASTER
+   ENDIF
+   GO RECNO() - 1
+   STORE VACACION TO WDIASVAC
+   STORE BONOVAC  TO WDIASBON
+   STORE INT((WFINDATE-WINGRESO)/365) TO WDIABONADI
+   IF WDIABONADI>15
+      STORE 15 TO WDIABONADI
+   ENDIF
+   IF WDIABONADI>1
+      STORE WDIASBON+(WDIABONADI-1)   TO  WBONOVAC
+   ELSE
+      STORE WDIASBON                  TO  WBONOVAC
+   ENDIF
+   STORE SPACE(35) TO QQWW
+   DO INFORMA WITH QQWW
+   IF QQWW <> t3
+      STORE 1 TO POSI
+      else
+      STORE 0 TO POSI
+   ENDIF
+   USE IPNOMINA INDEX IPNOMINA ALIAS NOMINA
+   IF WNOMINA = SPACE(5)
+      STORE "ERROR, Esta cedula no tiene nomina asignada" to mes
+      do aviso with mes
+      close data
+      close index
+      return
+   endif
+   FIND &WNOMINA
+   IF EOF()
+      STORE "ERROR, codigo de nomina no registrado en maestro de nominas" to mes
+      do aviso with mes
+      loop
+   endif
+   store factcod to wfactor
+   select 4
+   use ipnfactor
+   locate for faccod = wfactor
+   if .not. found()
+      store "ERROR, tabla de factores de la nomina del obrero no esta registrada" to mes
+      do aviso with mes
+      loop
+   endif
+   store f_ayuciu  to wayuciu
+   IF WSIND2 = SPACE(12)
+      STORE 0 TO WSINDIC
+   ENDIF
+
+   STORE (WBASICO+WBONOCO+WAYUCIU) TO Wbasicodia
+   STORE WBASICODIA TO VARIABLE
+   DO REDONDEO WITH VARIABLE
+   STORE VARIABLE TO WBASICODIA
+   STORE ROUND(WBASICODIA,2) TO WBASICODIA
+
+   STORE (WBASICO+WBONOCO) TO WSINAYUDA
+   STORE WSINAYUDA TO VARIABLE
+   DO REDONDEO WITH VARIABLE
+   STORE VARIABLE TO WSINAYUDA
+   STORE ROUND(WSINAYUDA,2) TO WSINAYUDA
+
+   store wbasicodia*WDIASVAC TO BSDIASVAC
+   store wSINAYUDA*WDIASVAC  TO BSSINAYUDA
+   STORE WBONOVAC*WBASICODIA TO BSBONOVAC
+
+   STORE DAY(INIDATE)  TO DDDD1
+   STORE DAY(WFINDATE) TO DDDD2
+   STORE MONTH(INIDATE) TO MMMM1
+   STORE MONTH(WFINDATE) TO MMMM2
+
+   store WFechasal + wlapso to wfechaven
+   STORE 0 TO ADICIONAL
+   STORE 0 TO FERIADO
+   SELECT 5
+   USE IPNHOLLY
+   DO WHILE .NOT. EOF()
+      STORE wfechasal TO F1
+      STORE wfechaven TO F2
+      STORE 0 TO NUMDIA
+      DO WHILE F1<=F2
+         STORE NUMDIA + 1 TO NUMDIA
+         IF DAY(F1) = DAY(FECHA) .AND. MONTH(F1) = MONTH(FECHA)
+            STORE FERIADO + 1 TO FERIADO
+            STORE F2 TO F1
+            IF NUMDIA <= 15
+               STORE ADICIONAL + 1 TO ADICIONAL
+            ENDIF
+         ENDIF
+         STORE F1+1 TO F1
+      ENDDO
+      SKIP
+   ENDDO
+   STORE WBASICODIA*FERIADO TO BSFERIADO
+   STORE WLAPSO+FERIADO TO WDIASDISF
+
+   STORE (BSDIASVAC+BSBONOVAC+BSFERIADO)*wislr to WBSISLR
+   STORE (WLAPSO*WBASICODIA)*wsso  to WBSSSO
+   STORE (WLAPSO*WBASICODIA)*wsPF  to WBSSPF
+   STORE (WLAPSO*WBASICODIA)*wAH  to WBSAH
+   STORE (WLAPSO*WBASICODIA)*wCAJA To WBSCAJA
+   STORE (WLAPSO*WBASICODIA)*(WSINDIC/100) TO WBSSINDIC
+   set devi to print
+   IF POSI = 1
+      @ PROW(),1 SAY CHR(14)+warning+CHR(18)
+      SET DEVI TO SCRE
+      CLOSE DATA
+      CLOSE INDEX
+      QUIT
+   ENDIF
+   @ 1,0 SAY CHR(14)+QQWW
+   @ 2,60 SAY "FECHA :"+DTOC(WFECACT)
+   @ 4,30 SAY "VACACIONES ANUALES"
+   @ 5,1 SAY "NOMBRE: "+RTRIM(WNOMBRE)+" "+WAPELLIDO
+   @ 5,60 SAY "CEDULA: "+WCEDULA
+   @ 7,1 SAY "SUELDO: "+STR(WSINAYUDA,8,2)
+   @ 7,25 SAY "AYUDA DE CIUDAD:"+STR(WAYUCIU,8,2)
+   @ 9,1  SAY "PERIODO VENCIDO :  DEL "+DTOC(INIDATE)+" AL "+DTOC(WFINDATE)
+   @ 10,1  SAY "PERIODO DISFRUTE:  DEL "+DTOC(WFECHASAL)+" AL "+DTOC(WFECHAVEN)
+   @ 12,1 SAY "DESCRIPCION                      UNID.     ASIGNAC.      DEDUCION       SALDO"
+   @ 13,1 SAY "----------------------------     -----   ----------   -----------  ----------"
+   @ 14,1 SAY "VACACIONES ANUALES"
+   @ 14,30 SAY STR(WDIASVAC,8,2)
+   @ 14,40 SAY STR(BSDIASVAC,12,2)
+   @ 16,1 SAY "FERIADOS PERIODO DISFRUTE"
+   @ 16,30 SAY STR(FERIADO,8,2)
+   @ 16,40 SAY STR(BSFERIADO,12,2)
+   @ 18,1 SAY "BONO VACACIONAL"
+   @ 18,30 SAY STR(WBONOVAC,8,2)
+   @ 18,40 SAY STR(BSBONOVAC,12,2)
+   @ 20,1 SAY "IMPUESTO SOBRE LA RESTA"
+   @ 20,54 SAY STR(WBSISLR,12,2)
+   @ 22,1 SAY "SEGURO SOCIAL OBLIGATORIO"
+   @ 22,54 SAY STR(WBSSSO,12,2)
+   @ 24,1 SAY "SEGURO DE PARO FORZOSO"
+   @ 24,54 SAY STR(WBSSPF,12,2)
+   @ 26,1 SAY "AHORRO HABITACIONAL"
+   @ 26,54 SAY STR(WBSAH,12,2)
+   @ 28,1 SAY "SINDICATOS"
+   @ 28,54 SAY STR(WBSSINDIC,12,2)
+   @ 30,1 SAY "PRESTAMOS"
+   @ 30,54 SAY STR(WPRESTAMO,12,2)
+   @ 32,1 SAY "CAJA DE AHORRORS"
+   @ 32,54 SAY STR(WBSCAJA,12,2)
+   STORE (BSDIASVAC+BSFERIADO+BSBONOVAC) TO WTOTASIG
+   STORE (WBSISLR+WBSSSO+WBSSPF+WBSAH+WBSSINDIC+WPRESTAMO+WBSCAJA) TO WTOTDEC
+   STORE WTOTASIG-WTOTDEC TO WMONTO
+   @ 34,1 SAY "T O T A L E S  "
+   @ 34,40 SAY STR(WTOTASIG,12,2)
+   @ 34,54 SAY STR(WTOTDEC,12,2)
+   @ 34,67 SAY STR(WMONTO,12,2)
+   @ 37,40 say "__________________________________"
+   @ 38,40 say chr(15)+"Firma del trabajador o a su ruego por no saber firmar"+chr(18)
+   @ 42,3 say "____________________________               _______________________________"
+   @ 43,3 say "        Testigo                                       Testigo             "
+   @ 47,3 say "____________________________"
+   @ 48,3 say "  Lugar y Fecha del Pago    "
+   @ 49,50 say chr(15)+"Papel sellado inutilizado en la copia"+chr(18)
+   @ 50,50 say chr(15)+"que quedan en poder de "+QQWW+chr(18)
+   EJECT
+   store "Actualizando Historico, Favor esperar..." to mes
+   set devi to scree
+   do mensaje with mes
+   SELECT 2
+   *STORE WCEDULA+DTOC(WFECHASAL)+WNOMINA TO WCLAVE
+   *FIND &WCLAVE
+   *IF EOF()
+      APPEND BLANK
+      STORE .T. TO WFLAGACUM
+   *ELSE
+   *   STORE .F. TO WFLAGACUM
+   *ENDIF
+   REPLACE CEDULA WITH WCEDULA
+   REPLACE FECHA WITH WFECHASAL
+   REPLACE nomina WITH WNOMINA
+   REPLACE DESOCB1 WITH "V"
+   REPLACE HROCB1 WITH (WLAPSO+FERIADO)*8
+   REPLACE BSOCB1 WITH WTOTASIG
+   replace bstotbon with WTOTASIG
+   REPLACE BSISLR WITH WBSISLR
+   REPLACE BSSSO  WITH WBSSSO
+   REPLACE BSAHRHAB  WITH WBSAH
+   REPLACE BSSINDIC  WITH WBSSINDIC
+   REPLACE BSPRESPER WITH WPRESTAMO
+   REPLACE BSCAJA    WITH WBSCAJA
+   REPLACE BSTOTDEC  WITH WTOTDEC
+
+   SELECT 1
+   REPLACE LASTVACA WITH VACACION
+   REPLACE VACACION WITH WFINDATE
+   IF WPRESTAMO > 0
+      REPLACE MP WITH MP - WPRESTAMO
+   ENDIF
+   IF WFLAGACUM
+      REPLACE UTILACUM WITH UTILACUM+WTOTASIG
+   ENDIF
+   SET DEVI TO SCRE
+

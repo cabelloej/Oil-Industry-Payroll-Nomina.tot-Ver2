@@ -1,0 +1,29 @@
+
+STORE .T. TO HIS
+DO WHILE HIS
+   STORE "OPCIONES:(ID)=IND.DET., (IR)=IND.RES., (ND)=NOMINA DET., (NR)=NOMINA RES." TO MES
+   DO MENSAJE WITH MES
+   STORE "  " TO RESP
+   @ 23,77 GET RESP
+   READ
+   IF RESP = "  "
+      STORE .F. TO HIS
+      CLOSE DATA
+      CLOSE INDEX
+      RETURN
+   ENDIF
+   STORE RESP TO ASD
+   DO CASE
+      CASE ASD = "ID"
+           DO IPN0505A
+      CASE ASD = "IR"
+           DO IPN0505B
+      CASE ASD = "ND"
+           DO IPN0505C
+      CASE ASD = "NR"
+           DO IPN0505D
+  ENDCASE
+ENDDO
+
+
+
